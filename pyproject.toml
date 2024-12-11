@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "analogierechner"
+version = "0.1.0"
+description = "interactive embedding visualization tool"
+authors = ["Lena Aretz <aretzlena@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+streamlit = "^1.32.0"
+gensim = "^4.3.2"
+numpy = "^1.26.0"
+scikit-learn = "^1.4.0"
+plotly = "^5.18.0"
+pandas = "^2.2.0"
+
+
+[tool.poetry.group.dev.dependencies]
+jupyterlab = "^4.1.0"
+black = "^24.2.0"
+flake8 = "^7.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
