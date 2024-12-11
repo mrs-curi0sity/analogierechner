@@ -3,6 +3,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import random
 
+
 class EmbeddingHandler:
     def __init__(self, model_name: str = 'paraphrase-multilingual-mpnet-base-v2'):
         """
@@ -59,6 +60,49 @@ class EmbeddingHandler:
         except Exception as e:
             print(f"Fehler in find_analogy: {e}")
             return []
+
+
+    def find_similar_words(self, word: str, n: int = 5):
+        """
+        Findet die semantisch ähnlichsten Wörter zu einem gegebenen Wort.
+        
+        Args:
+            word (str): Das Wort, zu dem Ähnlichkeiten gesucht werden
+            n (int): Anzahl der zurückzugebenden ähnlichen Wörter
+        
+        Returns:
+            List[Tuple[str, float]]: Liste von (Wort, Ähnlichkeitsscore)
+        """
+        try:
+            # Überprüfen, ob das Eingabewort in der Wortliste ist
+            word = word.lower()
+            if word not in self.word_list:
+                print(f"Wort '{word}' nicht in der Wortliste gefunden.")
+                return []
+            
+            # Embedding des Eingabeworts
+            input_embedding = self.model.encode(word)#self.word_embeddings.get(word)
+            
+            # Kandidaten (außer das Eingabewort selbst)
+            candidates = [w for w in self.word_list if w != word]
+            
+            # Ähnlichkeiten berechnen
+            similarities = [
+                cosine_similarity([input_embedding], [self.model.encode(candidate)])[0][0] 
+                for candidate in candidates
+            ]
+            
+            # Top-Kandidaten finden
+            sorted_indices = np.argsort(similarities)[-n:][::-1]
+            results = [(candidates[idx], similarities[idx]) for idx in sorted_indices]
+            
+            return results
+        
+        except Exception as e:
+            print(f"Fehler in find_similar_words: {e}")
+            return []
+
+
 
 # Beispielverwendung
 if __name__ == "__main__":

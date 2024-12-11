@@ -7,7 +7,7 @@ def load_embedding_handler():
     return EmbeddingHandler()
 
 def main():
-    st.title("Word Wanderer: Semantische Analyse")
+    st.title("Analogierechner: Semantische Analyse")
     
     # Sidebar für Navigations-Optionen
     app_mode = st.sidebar.selectbox("Wähle eine Funktion", 
@@ -22,11 +22,11 @@ def main():
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            word1 = st.text_input("Erstes Wort", "Berlin")
+            word1 = st.text_input("Erstes Wort", "Mann")
         with col2:
-            word2 = st.text_input("Zweites Wort", "Deutschland")
+            word2 = st.text_input("Zweites Wort", "Junge")
         with col3:
-            target = st.text_input("Zielwort", "Paris")
+            target = st.text_input("Zielwort", "Frau")
         
         if st.button("Analogie berechnen"):
             try:
