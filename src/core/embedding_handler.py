@@ -1,122 +1,206 @@
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-import random
-
+import fasttext
+import fasttext.util
 
 class EmbeddingHandler:
-    def __init__(self, model_name: str = 'paraphrase-multilingual-mpnet-base-v2'):
-        """
-        Initialisiert den EmbeddingHandler mit einem mehrsprachigen Modell.
-        """
-        self.model = SentenceTransformer(model_name)
-        self.word_list = self.load_word_list()
+    def __init__(self, language='de'):
+        self.language = language
+        self.word_list_path = f'data/{language}_50k_most_frequent.txt'
+        
+        if language == 'de':
+            self.model_path = f'data/cc.{language}.300.bin'
+        else: # englisch
+            self.model_path = f'data/glove.6B.100d.txt'
+        
+        # Lazy loading für Model und Wortliste
+        self._model = None
+        self._word_list = None
+        self._embedding_cache = {}
+        self._case_mapping = {}
+        self._proper_case_word_list = None
 
-    def load_word_list(self, path='data/de_50k_most_frequent.txt'):
-        """
-        Lädt die Liste der häufigsten deutschen Wörter.
-        """
+    @property
+    def model(self):
+        """Lazy loading des Models"""
+        if self._model is None:
+            self._model = fasttext.load_model(self.model_path)
+        return self._model
+
+    @property
+    def word_list(self):
+        """Lazy loading der Wortliste"""
+        if self._word_list is None:
+            self._word_list = self.load_word_list()
+            self._proper_case_word_list = [
+                self._get_best_case_variant(word) for word in self._word_list
+            ]
+        return self._word_list
+
+    def load_word_list(self, path=None):
+        """Lädt die Wortliste der gewählten Sprache"""
+        path = path or self.word_list_path
         try:
             with open(path, 'r', encoding='utf-8') as f:
-                return [line.strip().split(" ")[0] for line in f]
+                return [line.strip().split(" ")[0].lower() for line in f]
         except FileNotFoundError:
             print(f"Wortliste nicht gefunden unter {path}")
             return []
 
-    def find_analogy(self, word1: str, word2: str, word3: str, n: int = 5):
-        """
-        Findet Analogien wie: word1 : word2 = word3 : ?
-        """
-        try:
-            # Überprüfen, ob Eingabewörter im Modell vorhanden sind
-            if word1.lower() not in self.word_list or word2.lower() not in self.word_list or word3.lower() not in self.word_list:
-                print("Eines der Eingabewörter ist nicht in der Wortliste.")
-                return []
-    
-            # Embeddings berechnen
-            emb1 = self.model.encode(word1)
-            emb2 = self.model.encode(word2)
-            emb3 = self.model.encode(word3)
+    def _get_best_case_variant(self, word):
+        """Findet die beste Schreibweise eines Wortes"""
+        variants = [
+            word.lower(),          # frau
+            word.capitalize(),     # Frau
+            word.upper(),          # FRAU
+            word                   # Original-Eingabe
+        ]
+        variants = list(set(variants))  # Entferne Duplikate
+        
+        best_variant = word
+        best_norm = 0
+        
+        for variant in variants:
+            try:
+                embedding = self.model.get_word_vector(variant)
+                norm = np.linalg.norm(embedding)
+                if norm > best_norm:
+                    best_norm = norm
+                    best_variant = variant
+            except:
+                continue
+                
+        return best_variant
+
+
+    def _is_acronym(self, word):
+        """Erweiterte Akronym-Erkennung"""
+        if word.upper() in GERMAN_ACRONYMS:
+            return True
             
-            # Vektordifferenz berechnen
+        # Zusätzliche Heuristiken für unbekannte Akronyme
+        if (word.isupper() and 
+            len(word) >= 2 and 
+            len(word) <= 5 and
+            not any(c.isdigit() for c in word) and
+            all(c.isalpha() for c in word)):
+            return True
+            
+        return False
+    
+    def _calculate_similarities(self, target_vector, candidates):
+        """Berechnet Cosine-Similarities zwischen Zielvektor und Kandidaten"""
+        similarities = []
+        for word in candidates:
+            try:
+                word_embedding = self.get_embedding(word)
+                sim = cosine_similarity([target_vector], [word_embedding])[0][0]
+                similarities.append(sim)
+            except:
+                similarities.append(-1)  # Fallback für nicht gefundene Wörter
+        return similarities
+        
+
+    def get_embedding(self, word):
+        """Verbesserte Version mit Case-Handling"""
+        if not self._case_mapping:
+            self._initialize_case_mapping()
+        
+        word_lower = word.lower()
+        
+        # Prüfe Cache
+        if word_lower in self._embedding_cache:
+            return self._embedding_cache[word_lower]
+        
+        # Wenn das Wort nicht in unserem Mapping ist,
+        # finde die beste Variante on-the-fly
+        if word_lower not in self._case_mapping:
+            self._case_mapping[word_lower] = self._get_best_case_variant(word)
+        
+        best_case = self._case_mapping[word_lower]
+        
+        try:
+            embedding = self.model.get_word_vector(best_case)
+            self._embedding_cache[word_lower] = embedding
+            return embedding
+        except Exception as e:
+            raise ValueError(f"Konnte kein Embedding für '{word}' ({best_case}) finden: {str(e)}")
+
+    
+    def _initialize_case_mapping(self):
+        """Initialisiert das Case-Mapping beim ersten Bedarf"""
+        if not self._case_mapping:
+            print("Initialisiere Case-Mapping...")
+            for word in self.word_list:
+                lower = word.lower()
+                if lower not in self._case_mapping:
+                    best_variant = self._get_best_case_variant(word)
+                    self._case_mapping[lower] = best_variant
+
+    
+
+    def find_analogy(self, word1, word2, word3, expected_result="", n=5):
+        """Verbesserte Analogieberechnung mit korrekter Schreibweise"""
+        try:
+            # Embeddings berechnen
+            emb1 = self.get_embedding(word1)
+            emb2 = self.get_embedding(word2)
+            emb3 = self.get_embedding(word3)
+            
+            # Vektordifferenz und Zielvektor
             diff_vector = emb2 - emb1
             target_vector = emb3 + diff_vector
             
-            # Alle Kandidaten außer Eingabewörter
-            candidates = [w for w in self.word_list if w not in [word1, word2, word3]]
-            
-            # Embeddings der Kandidaten
-            candidate_embeddings = self.model.encode(candidates)
-            
-            # Ähnlichkeiten berechnen
-            similarities = cosine_similarity([target_vector], candidate_embeddings)[0]
-            
-            # Top-Kandidaten finden und sortieren
-            sorted_indices = similarities.argsort()[-n:][::-1]
-            results = [(candidates[idx], similarities[idx]) for idx in sorted_indices]
-            
-            return results
-        
-        except Exception as e:
-            print(f"Fehler in find_analogy: {e}")
-            return []
-
-
-    def find_similar_words(self, word: str, n: int = 5):
-        """
-        Findet die semantisch ähnlichsten Wörter zu einem gegebenen Wort.
-        
-        Args:
-            word (str): Das Wort, zu dem Ähnlichkeiten gesucht werden
-            n (int): Anzahl der zurückzugebenden ähnlichen Wörter
-        
-        Returns:
-            List[Tuple[str, float]]: Liste von (Wort, Ähnlichkeitsscore)
-        """
-        try:
-            # Überprüfen, ob das Eingabewort in der Wortliste ist
-            word = word.lower()
-            if word not in self.word_list:
-                print(f"Wort '{word}' nicht in der Wortliste gefunden.")
-                return []
-            
-            # Embedding des Eingabeworts
-            input_embedding = self.model.encode(word)#self.word_embeddings.get(word)
-            
-            # Kandidaten (außer das Eingabewort selbst)
-            candidates = [w for w in self.word_list if w != word]
-            
-            # Ähnlichkeiten berechnen
-            similarities = [
-                cosine_similarity([input_embedding], [self.model.encode(candidate)])[0][0] 
-                for candidate in candidates
+            # Kandidaten filtern mit korrekter Schreibweise
+            exclude_words = {word1.lower(), word2.lower(), word3.lower()}
+            candidates_with_case = [
+                (proper_case, word.lower()) 
+                for proper_case, word in zip(self._proper_case_word_list, self.word_list)
+                if word.lower() not in exclude_words
             ]
             
-            # Top-Kandidaten finden
-            sorted_indices = np.argsort(similarities)[-n:][::-1]
-            results = [(candidates[idx], similarities[idx]) for idx in sorted_indices]
+            # Similarities berechnen
+            similarities = [
+                cosine_similarity([target_vector], [self.get_embedding(proper_case)])[0][0]
+                for proper_case, _ in candidates_with_case
+            ]
             
-            return results
-        
+            # Top-N Results mit korrekter Schreibweise
+            sorted_indices = np.argsort(similarities)[-n:][::-1]
+            results = [
+                (candidates_with_case[idx][0], similarities[idx])  # Nutze proper_case
+                for idx in sorted_indices
+            ]
+            
+            if expected_result:
+                expected_emb = self.get_embedding(expected_result)
+                expected_similarity = cosine_similarity([target_vector], [expected_emb])[0][0]
+                return results, expected_similarity
+            return results, None
+            
         except Exception as e:
-            print(f"Fehler in find_similar_words: {e}")
-            return []
+            raise Exception(f"Fehler bei der Analogieberechnung: {str(e)}")
+
+  
 
 
-
-# Beispielverwendung
-if __name__ == "__main__":
-    handler = EmbeddingHandler()
-    
-    # Beispiel-Analogien
-    analogies = [
-        ("Berlin", "Deutschland", "Paris"),
-        ("Mutter", "Frau", "Vater"),
-        ("groß", "größer", "klein")
-    ]
-    
-    for word1, word2, word3 in analogies:
-        print(f"\nAnalogiesuche: {word1} : {word2} = {word3} : ?")
-        results = handler.find_analogy(word1, word2, word3)
-        for word, score in results:
-            print(f"{word}: {score:.3f}")
+    def find_similar_words(self, word: str, n: int = 10):
+        """
+        Findet die semantisch ähnlichsten Wörter.
+        """
+        input_embedding = self.get_embedding(word)
+        
+        candidates = [
+            w for w in self.word_list 
+            if w != word
+        ]
+        
+        similarities = [
+            cosine_similarity([input_embedding], [self.get_embedding(w)])[0][0] 
+            for w in candidates
+        ]
+        
+        top_indices = np.argsort(similarities)[-n:][::-1]
+        results = [(candidates[idx], similarities[idx]) for idx in top_indices]
+        
+        return results
