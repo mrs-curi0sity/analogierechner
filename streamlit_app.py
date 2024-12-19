@@ -12,6 +12,18 @@ def main():
     # Sidebar für Navigations-Optionen
     app_mode = st.sidebar.selectbox("Wähle eine Funktion", 
         ["Analogie-Suche", "Ähnliche Wörter", "Über das Projekt"])
+
+    language = st.sidebar.selectbox(
+        "Sprache / Language",
+        ["Deutsch", "English"],
+        index=0
+    )
+
+        
+    @st.cache_resource
+    def load_embedding_handler():
+        lang = 'de' if language == 'Deutsch' else 'en'
+        return EmbeddingHandler(language=lang)
     
     # Embedding Handler laden
     embedding_handler = load_embedding_handler()

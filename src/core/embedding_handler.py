@@ -4,26 +4,42 @@ import fasttext
 import fasttext.util
 
 class EmbeddingHandler:
-    def __init__(self, model_path='data/cc.de.300.bin'):
-        self.model = fasttext.load_model(model_path)
+    def __init__(self, language='de'):
+        self.language = language
+        self.word_list_path = f'data/{language}_50k_most_frequent.txt'
+        
+        if language == 'de':
+            self.model_path = f'data/cc.{language}.300.bin'
+        else: # englisch
+            self.model_path = f'data/glove.6B.100d.txt'
+        
+        # Lazy loading für Model und Wortliste
+        self._model = None
         self._word_list = None
         self._embedding_cache = {}
         self._case_mapping = {}
-        self._proper_case_word_list = None  # Neue Liste für korrekte Schreibweisen
+        self._proper_case_word_list = None
+
+    @property
+    def model(self):
+        """Lazy loading des Models"""
+        if self._model is None:
+            self._model = fasttext.load_model(self.model_path)
+        return self._model
 
     @property
     def word_list(self):
-        """Lazy loading der Wortliste mit korrekter Schreibweise"""
+        """Lazy loading der Wortliste"""
         if self._word_list is None:
             self._word_list = self.load_word_list()
-            # Erstelle proper case Liste beim ersten Laden
             self._proper_case_word_list = [
                 self._get_best_case_variant(word) for word in self._word_list
             ]
         return self._word_list
 
-    def load_word_list(self, path='data/de_50k_most_frequent.txt'):
-        """Lädt die Liste der häufigsten deutschen Wörter."""
+    def load_word_list(self, path=None):
+        """Lädt die Wortliste der gewählten Sprache"""
+        path = path or self.word_list_path
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 return [line.strip().split(" ")[0].lower() for line in f]
@@ -56,6 +72,21 @@ class EmbeddingHandler:
                 
         return best_variant
 
+
+    def _is_acronym(self, word):
+        """Erweiterte Akronym-Erkennung"""
+        if word.upper() in GERMAN_ACRONYMS:
+            return True
+            
+        # Zusätzliche Heuristiken für unbekannte Akronyme
+        if (word.isupper() and 
+            len(word) >= 2 and 
+            len(word) <= 5 and
+            not any(c.isdigit() for c in word) and
+            all(c.isalpha() for c in word)):
+            return True
+            
+        return False
     
     def _calculate_similarities(self, target_vector, candidates):
         """Berechnet Cosine-Similarities zwischen Zielvektor und Kandidaten"""
