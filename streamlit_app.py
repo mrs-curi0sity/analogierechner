@@ -21,7 +21,7 @@ def main():
     language = st.sidebar.selectbox(
         "Sprache / Language",
         ["Deutsch", "English"],
-        index=0,
+        index=1,
         key='language_selector'
     )
     
@@ -60,8 +60,10 @@ def main():
                 st.markdown(f"**{word3}** ↔ **{results[0][0]}**")
             else:
                 st.markdown(f"**{word3}** ↔ **?**")
-        
-        if st.button("Analogie berechnen"):
+
+
+    if st.button("Analogie berechnen"):
+        with st.spinner('Berechne Analogie...'):
             try:
                 results, _ = embedding_handler.find_analogy(word1, word2, word3, "")
                 # Große, klare Ergebnisaussage

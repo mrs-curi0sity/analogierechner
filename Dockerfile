@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
 
 # Poetry installieren
 ENV POETRY_HOME=/opt/poetry
+ENV ENVIRONMENT=cloud
+
 RUN curl -sSL https://install.python-poetry.org | python3 - && \
     cd /usr/local/bin && \
     ln -s /opt/poetry/bin/poetry

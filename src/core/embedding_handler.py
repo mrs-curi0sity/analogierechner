@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import fasttext
@@ -5,36 +6,45 @@ import fasttext.util
 import streamlit as st
 
 class EmbeddingHandler:
-
+    # Basis-Pfade basierend auf Umgebung
+    BASE_PATH = "gs://analogierechner-models/data" if os.getenv("ENVIRONMENT") == "cloud" else "data"
+    
     MODEL_CONFIGS = {
         'de': {
             'type': 'fasttext',
-            'path': 'data/cc.de.300.bin',
-            'word_list_path': 'data/de_50k_most_frequent.txt'
+            'path': f'{BASE_PATH}/cc.de.300.bin',
+            'word_list_path': f'{BASE_PATH}/de_50k_most_frequent.txt'
         },
         'en': {
             'type': 'glove',
-            'path': 'data/glove.6B.100d.txt',
-            'word_list_path': 'data/en_50k_most_frequent.txt'  
-        },
-        # hier ggfs weitere sprachkonfigs eingeben
+            'path': f'{BASE_PATH}/glove.6B.100d.txt',
+            'word_list_path': f'{BASE_PATH}/en_50k_most_frequent.txt'
+        }
     }
 
+    def _get_file_path(self, path):
+        """Handhabt Dateizugriff basierend auf Umgebung"""
+        if os.getenv("ENVIRONMENT") == "cloud" and path.startswith(self.BASE_PATH):
+            # In Cloud: Download von GCS
+            local_path = f'/tmp/{os.path.basename(path)}'
+            self._download_from_gcs(path, local_path)
+            return local_path
+        # Lokal: direkter Zugriff
+        return path
 
 
     def __init__(self, language='de'):
-        if language not in self.MODEL_CONFIGS:
-            raise ValueError(f"Sprache {language} wird nicht unterstützt")
-            
         self.config = self.MODEL_CONFIGS[language]
         self.model_type = self.config['type']
-        self.model_path = self.config['path']
+        
+        # Pfade entsprechend der Umgebung auflösen
+        self.model_path = self._get_file_path(self.config['path'])
+        self.word_list_path = self._get_file_path(self.config['word_list_path'])
         
         self._model = None
         self._word_list = None
         self._embedding_cache = {}
-        self._case_mapping = {}
-    
+        
 
     @property
     def model(self):
