@@ -40,7 +40,8 @@ def main():
         Der Wörter-Rechner findet Beziehungen zwischen Wörtern.
         Beispiel: Germany ↔ Berlin = Spain ↔ ?
         """)
-        
+
+
         # Eingabefelder in zwei Spalten
         col1, col2 = st.columns(2)
         
@@ -48,27 +49,29 @@ def main():
             st.markdown("### Erste Beziehung")
             word1 = st.text_input("Startwort (z.B. Germany)", "Germany")
             word2 = st.text_input("Zielwort (z.B. Berlin)", "Berlin")
+            st.markdown(f"**{word1}** ↔ **{word2}**")
             
         with col2:
             st.markdown("### Zweite Beziehung")
             word3 = st.text_input("Startwort (z.B. Spain)", "Spain")
-            
+            # Platzhalter mit gleicher Höhe wie das Eingabefeld
+            st.text_input("Ergebnis", "", disabled=True, key="result_placeholder")
+            if 'results' in locals() and results:
+                st.markdown(f"**{word3}** ↔ **{results[0][0]}**")
+            else:
+                st.markdown(f"**{word3}** ↔ **?**")
+        
         if st.button("Analogie berechnen"):
             try:
-                results, _ = embedding_handler.find_analogy(
-                    word1, word2, word3, ""
-                )
-                
-                # Hauptergebnis als markante Aussage
-                best_word = results[0][0]
-                
+                results, _ = embedding_handler.find_analogy(word1, word2, word3, "")
                 # Große, klare Ergebnisaussage
                 st.markdown("---")
                 st.markdown(f"## 🎯 Ergebnis:")
                 st.markdown(f"""
-                ### {word1} verhält sich zu {word2} wie {word3} zu {best_word}
+                ### {word1} verhält sich zu {word2} wie {word3} zu {results[0][0]}
                 """)
                 st.markdown("---")
+
                 
                 # Weitere Details ausklappbar
                 with st.expander("Details und weitere Vorschläge", expanded=True):
