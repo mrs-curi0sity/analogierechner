@@ -15,7 +15,7 @@ class EmbeddingHandler:
         'en': {
             'type': 'glove',
             'path': 'data/glove.6B.100d.txt',
-            'word_list_path': None  # GloVe nutzt Wörter aus dem Model
+            'word_list_path': 'data/en_50k_most_frequent.txt'  
         },
         # hier ggfs weitere sprachkonfigs eingeben
     }
@@ -51,13 +51,22 @@ class EmbeddingHandler:
     def _load_glove(self, path):
         """Lädt GloVe Embeddings aus einer Textdatei"""
         embeddings = {}
+        word_list = set()  # Set für schnellere Lookups
+        
+        # Erst Wortliste laden
+        if self.config['word_list_path']:
+            with open(self.config['word_list_path'], 'r', encoding='utf-8') as f:
+                word_list = {line.strip().split()[0].lower() for line in f}
+        
+        # Dann nur diese Wörter aus GloVe laden
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
                     values = line.split()
                     word = values[0]
-                    vector = np.asarray(values[1:], dtype='float32')
-                    embeddings[word] = vector
+                    if not word_list or word in word_list:  # wenn keine Liste da ist oder Wort in Liste
+                        vector = np.asarray(values[1:], dtype='float32')
+                        embeddings[word] = vector
             return embeddings
         except Exception as e:
             raise Exception(f"Fehler beim Laden der GloVe Embeddings: {str(e)}")

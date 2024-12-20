@@ -1,4 +1,5 @@
-FROM python:3.9-slim
+# Python 3.11 statt 3.9 verwenden
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -10,19 +11,19 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Poetry installieren
-RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV POETRY_HOME=/opt/poetry
+RUN curl -sSL https://install.python-poetry.org | python3 - && \
+    cd /usr/local/bin && \
+    ln -s /opt/poetry/bin/poetry
 
-# Kopiere Poetry-Files
+# Poetry Files kopieren und Dependencies installieren
 COPY pyproject.toml poetry.lock ./
-
-# Poetry konfigurieren und Dependencies installieren
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi
+    && poetry install --no-interaction --no-ansi --no-root
 
 # App-Code kopieren
 COPY . .
 
 EXPOSE 8080
 
-# Streamlit starten
 CMD streamlit run streamlit_app.py --server.port 8080 --server.address 0.0.0.0
