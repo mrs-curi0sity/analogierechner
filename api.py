@@ -1,4 +1,3 @@
-# api.py
 from fastapi import FastAPI
 from pydantic import BaseModel
 from src.core.embedding_handler import EmbeddingHandler
@@ -15,15 +14,20 @@ class AnalogyRequest(BaseModel):
 async def get_analogy(request: AnalogyRequest):
     handler = EmbeddingHandler(language=request.language)
     results, _ = handler.find_analogy(request.word1, request.word2, request.word3, "")
+    return {"results": results[0][0] if results else None}  # Nur bestes Ergebnis
+
+@app.post("/batch-analogy")
+async def batch_analogy(requests: list[AnalogyRequest]):
+    results = []
+    handlers = {}
+    
+    for request in requests:
+        if request.language not in handlers:
+            handlers[request.language] = EmbeddingHandler(request.language)
+        
+        result, _ = handlers[request.language].find_analogy(
+            request.word1, request.word2, request.word3, ""
+        )
+        results.append(result[0][0] if result else None)
+    
     return {"results": results}
-
-# Beispiel-Nutzung mit Python requests:
-import requests
-
-data = [
-    {"word1": "Germany", "word2": "Berlin", "word3": "France", "language": "en"},
-    {"word1": "king", "word2": "queen", "word3": "man", "language": "en"},
-    # ... mehr Beispiele
-]
-
-results = [requests.post("http://your-url/analogy", json=item).json() for item in data]

@@ -104,13 +104,22 @@ gsutil cp data/glove.6B.100d.txt gs://${PROJECT_ID}_models/data/
 
 6. App deployen:
 ```bash
-gcloud run deploy analogierechner \
+gcloud run deploy analogierechner-ui \
+  --source . \
+  --platform managed \
+  --region europe-west3 \
+  --allow-unauthenticated
+```
+
+7. API deployen
+```bash
+gcloud run deploy analogierechner-api \
   --source . \
   --platform managed \
   --region europe-west3 \
   --allow-unauthenticated \
-  --memory 2Gi \
-  --service-account="cloudbuild-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
+  --service-account="cloudbuild-deployer@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --config=Dockerfile.api
 ```
 
 ### Kosten & Monitoring
