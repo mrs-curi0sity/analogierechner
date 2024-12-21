@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 @st.cache_resource
 def load_embedding_handler(language):
     # Debug-Ausgabe
+    st.markdown("### Debugging info")
     st.write(f"Loading handler for language: {language}")
     lang = 'de' if language == 'Deutsch' else 'en'
     st.write(f"Using language code: {lang}")
@@ -70,7 +71,10 @@ def main():
     if st.button("Analogie berechnen"):
         with st.spinner('Berechne Analogie...'):
             try:
-                results, _ = embedding_handler.find_analogy(word1, word2, word3, "")
+
+                
+                results, _, debug_info = embedding_handler.find_analogy(word1, word2, word3, "")
+                best_result = results[0][0] if results else None
 
                 # Logging
                 logger.log(
@@ -81,7 +85,7 @@ def main():
                     word3,
                     best_result
                 )
-
+            
                 
                 # Große, klare Ergebnisaussage
                 st.markdown("---")
@@ -97,7 +101,18 @@ def main():
                     st.markdown("#### Alternative Vorschläge:")
                     for word, score in results[1:5]:
                         st.markdown(f"- {word} (Score: {score:.3f})")
-                    
+
+                # Debug Info in einem Expander
+                with st.expander("🔍 Vektor-Details"):
+                    st.write(f"Ähnlichkeit {word1}:{word2}: {debug_info['input_similarity']:.3f}")
+                    st.write(f"Ähnlichkeit {word3}:{best_result}: {debug_info['output_similarity']:.3f}")
+                    st.write(f"Größe des Differenzvektors: {debug_info['vector_norm']:.3f}")
+                    st.write("Vektorlängen:")
+                    st.write(f"- {word1}: {debug_info['norm_word1']:.3f}")
+                    st.write(f"- {word2}: {debug_info['norm_word2']:.3f}")
+                    st.write(f"- {word3}: {debug_info['norm_word3']:.3f}")
+                    st.write(f"- {best_result}: {debug_info['norm_result']:.3f}")
+
             except Exception as e:
                 st.error(f"Fehler bei der Berechnung: {str(e)}")
     
@@ -127,19 +142,29 @@ def main():
                 st.error(f"Fehler bei der Suche: {e}")
     
     else:
-        st.header("Über Word Wanderer")
+        st.header("Über den Analogierechner")
         st.markdown("""
-        ### 🧠 Semantische Analyse mit Word Embeddings
-        
-        Word Wanderer nutzt moderne Machine-Learning-Techniken, um:
-        - Semantische Beziehungen zwischen Wörtern zu analysieren
-        - Analogien zu berechnen
-        - Ähnliche Wörter zu finden
-        
-        #### Technologien:
-        - Sentence Transformers
-        - Python
-        - Streamlit
+            ### 🧠 Semantische Analyse mit Word Embeddings
+            
+            Der Analogierechner nutzt moderne Machine-Learning-Techniken, um:
+            - Semantische Beziehungen zwischen Wörtern zu analysieren
+            - Analogien in Deutsch und Englisch zu berechnen
+            - Wort-Vektoren zu vergleichen und zu kombinieren
+            
+            #### Technologien:
+            - FastText (für deutsche Embeddings)
+            - GloVe (für englische Embeddings)
+            - scikit-learn (für Vektor-Berechnungen)
+            - Streamlit (Web Interface)
+            - FastAPI (REST API)
+            - Google Cloud Run (Deployment)
+            - Google Cloud Storage (Modell-Speicherung)
+            
+            #### Features:
+            - Mehrsprachig (DE/EN)
+            - REST API für Batch-Verarbeitung
+            - Thread-sicheres Logging
+            - Docker-Container
         """)
 
 if __name__ == "__main__":

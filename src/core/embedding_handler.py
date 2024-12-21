@@ -57,6 +57,10 @@ class EmbeddingHandler:
     }
 
     def __init__(self, language='de'):
+        # Sprache speichern
+        self.language = language
+        
+        # Rest bleibt gleich
         self.config = self.MODEL_CONFIGS[language]
         self.model_type = self.config['type']
         
@@ -67,7 +71,6 @@ class EmbeddingHandler:
         self._model = None
         self._word_list = None
         self._embedding_cache = {}
-
         
 
     @property
@@ -126,80 +129,94 @@ class EmbeddingHandler:
            return []
     
     def get_embedding(self, word):
-       """Holt Embedding für ein Wort"""
-       word_lower = word.lower()
-       
-       # Prüfe Session Cache
-       if word_lower in st.session_state.embeddings_cache:
-           return st.session_state.embeddings_cache[word_lower]
-       
-       # Prüfe lokalen Cache    
-       if word_lower in self._embedding_cache:
-           return self._embedding_cache[word_lower]
-           
-       try:
-           if self.model_type == 'fasttext':
-               embedding = self.model.get_word_vector(word)
-           else:  # glove
-               if word_lower not in self.model:
-                   raise ValueError(f"Wort '{word_lower}' nicht im Vokabular gefunden")
-               embedding = self.model[word_lower]
-           
-           # Speichere in beiden Caches
-           self._embedding_cache[word_lower] = embedding
-           st.session_state.embeddings_cache[word_lower] = embedding
-           return embedding
-           
-       except Exception as e:
-           raise ValueError(f"Konnte kein Embedding für '{word}' finden: {str(e)}")
+        """Holt Embedding für ein Wort"""
+        word_lower = word.lower()
+        
+        # Prüfe Cache
+        if word_lower in self._embedding_cache:
+            return self._embedding_cache[word_lower]
+            
+        try:
+            if self.model_type == 'glove':
+                # Für englische Wörter
+                if word_lower not in self.model:
+                    raise ValueError(f"Das Wort '{word}' wurde nicht im englischen Vokabular gefunden")
+                embedding = self.model[word_lower]
+            else:
+                # Für deutsche Wörter
+                embedding = self.model.get_word_vector(word)
+                
+            self._embedding_cache[word_lower] = embedding
+            return embedding
+                
+        except Exception as e:
+            if self.language == 'en':
+                raise ValueError(f"Das Wort '{word}' wurde nicht im englischen Vokabular gefunden")
+            else:
+                raise ValueError(f"Das Wort '{word}' wurde nicht im deutschen Vokabular gefunden")
 
 
     def find_analogy(self, word1, word2, word3, expected_result="", n=5):
-        """Berechnet Wort-Analogien"""
-        try:
-            # Embeddings berechnen
-            emb1 = self.get_embedding(word1)
-            emb2 = self.get_embedding(word2)
-            emb3 = self.get_embedding(word3)
-            
-            # Vektordifferenz und Zielvektor
-            diff_vector = emb2 - emb1
-            target_vector = emb3 + diff_vector
-            
-            # Kandidaten filtern
-            exclude_words = {word1.lower(), word2.lower(), word3.lower()}
-            candidates = [w for w in self.word_list if w.lower() not in exclude_words]
-            
-            # Similarities berechnen
-            similarities = []
-            for word in candidates:
-                try:
-                    word_embedding = self.get_embedding(word)
-                    sim = cosine_similarity([target_vector], [word_embedding])[0][0]
-                    similarities.append((word, sim))
-                except:
-                    continue
-            
-            # Top-N Results
-            results = sorted(similarities, key=lambda x: x[1], reverse=True)[:n]
-            
-            if expected_result:
-                expected_emb = self.get_embedding(expected_result)
-                expected_similarity = cosine_similarity([target_vector], [expected_emb])[0][0]
-                return results, expected_similarity
-            return results, None
-            
-        except Exception as e:
-            # Log den Fehler
-            logger.log(
-                'error',
-                self.language,
-                word1,
-                word2,
-                word3,
-                f"Error: {str(e)}"
-            )
-            raise Exception(f"Fehler bei der Analogieberechnung: {str(e)}")
+       """Berechnet Wort-Analogien"""
+       try:
+           # Embeddings berechnen
+           emb1 = self.get_embedding(word1)
+           emb2 = self.get_embedding(word2)
+           emb3 = self.get_embedding(word3)
+           
+           # Debug: Ähnlichkeit zwischen Eingabewörtern
+           input_similarity = cosine_similarity([emb1], [emb2])[0][0]
+           norm1 = np.linalg.norm(emb1)
+           norm2 = np.linalg.norm(emb2)
+           norm3 = np.linalg.norm(emb3)
+           
+           # Vektordifferenz und Zielvektor
+           diff_vector = emb2 - emb1
+           target_vector = emb3 + diff_vector
+           
+           # Kandidaten filtern
+           exclude_words = {word1.lower(), word2.lower(), word3.lower()}
+           candidates = [w for w in self.word_list if w.lower() not in exclude_words]
+           
+           # Similarities berechnen
+           similarities = []
+           for word in candidates:
+               try:
+                   word_embedding = self.get_embedding(word)
+                   sim = cosine_similarity([target_vector], [word_embedding])[0][0]
+                   similarities.append((word, sim))
+               except:
+                   continue
+           
+           # Top-N Results
+           results = sorted(similarities, key=lambda x: x[1], reverse=True)[:n]
+           
+           # Debug: Ähnlichkeit zwischen Eingabe- und Ausgabewort
+           if results:
+               result_emb = self.get_embedding(results[0][0])
+               output_similarity = cosine_similarity([emb3], [result_emb])[0][0]
+               
+               # Zusätzliche Debug-Info
+               debug_info = {
+                    'input_similarity': input_similarity,  # Ähnlichkeit word1:word2
+                    'output_similarity': output_similarity,  # Ähnlichkeit word3:result
+                    'vector_norm': np.linalg.norm(diff_vector),  # Größe des Differenzvektors
+                    'norm_word1': norm1,  # Länge Vektor word1
+                    'norm_word2': norm2,  # Länge Vektor word2
+                    'norm_word3': norm3,  # Länge Vektor word3
+                    'norm_result': np.linalg.norm(result_emb)  # Länge Vektor result
+                }
+               
+               if expected_result:
+                   expected_emb = self.get_embedding(expected_result)
+                   expected_similarity = cosine_similarity([target_vector], [expected_emb])[0][0]
+                   return results, expected_similarity, debug_info
+               return results, None, debug_info
+               
+           return results, None, None
+       
+       except Exception as e:
+           raise Exception(f"Fehler bei der Analogieberechnung: {str(e)}")
 
     def find_similar_words(self, word: str, n: int = 10):
         """Findet ähnliche Wörter"""

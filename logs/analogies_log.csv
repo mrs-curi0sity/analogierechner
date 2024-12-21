@@ -1,1 +1,19 @@
 timestamp,source,language,word1,word2,word3,output
+2024-12-21 19:47:49,ui,English,Germany,Berlin,Spain,madrid
+2024-12-21 19:50:34,ui,English,Germany,Berlin,Spain,madrid
+2024-12-21 19:51:43,error,en,Haus,Ziegelstein,Wald,Error: Konnte kein Embedding für 'Haus' finden: Wort 'haus' nicht im Vokabular gefunden
+2024-12-21 19:51:56,ui,Deutsch,Haus,Ziegelstein,Wald,
+2024-12-21 19:52:01,ui,Deutsch,Haus,Ziegelstein,Wald,wäldern
+2024-12-21 19:53:12,error,de,Wolke,Regen,Party,"Error: operands could not be broadcast together with shapes (100,) (300,) "
+2024-12-21 19:53:19,error,en,Wolke,Regen,Party,"Error: operands could not be broadcast together with shapes (100,) (300,) "
+2024-12-21 19:53:26,error,de,Wolke,Regen,Party,"Error: operands could not be broadcast together with shapes (100,) (300,) "
+2024-12-21 19:56:09,ui,English,Germany,Berlin,USA,d.c.
+2024-12-21 19:56:44,ui,Deutsch,Pulli,Wolle,Party,partys
+2024-12-21 19:57:03,ui,Deutsch,pulli,wolle,party,partys
+2024-12-21 20:07:12,ui,English,Germany,Berlin,Spain,madrid
+2024-12-21 20:08:38,ui,English,Germany,Berlin,Spain,madrid
+2024-12-21 20:09:14,ui,Deutsch,Wasser,Tropfen,Volk,volkes
+2024-12-21 20:10:47,ui,Deutsch,Politik,Pferd,Ameise,pferde
+2024-12-21 20:14:09,ui,English,Germany,Berlin,Spain,madrid
+2024-12-21 20:16:24,ui,Deutsch,Mann,Ameise,Frau,raupe
+2024-12-21 20:17:30,ui,Deutsch,Haus,Käsekuchen,Mensch,veganer
