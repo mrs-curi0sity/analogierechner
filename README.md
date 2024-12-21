@@ -97,30 +97,26 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 5. Storage Bucket für Modelle erstellen & Dateien hochladen:
 ```bash
+# Bucket erstellen
 gsutil mb -l europe-west3 gs://${PROJECT_ID}_models
+
+# Modell-Dateien hochladen
 gsutil cp data/cc.de.300.bin gs://${PROJECT_ID}_models/data/
 gsutil cp data/glove.6B.100d.txt gs://${PROJECT_ID}_models/data/
+gsutil cp data/de_50k_most_frequent.txt gs://${PROJECT_ID}_models/data/
+gsutil cp data/en_50k_most_frequent.txt gs://${PROJECT_ID}_models/data/
 ```
 
-6. App deployen:
+6 App und API deployen
 ```bash
-gcloud run deploy analogierechner-ui \
-  --source . \
-  --platform managed \
-  --region europe-west3 \
-  --allow-unauthenticated
-```
-
-7. API deployen
-```bash
-gcloud run deploy analogierechner-api \
+gcloud run deploy analogierechner \
   --source . \
   --platform managed \
   --region europe-west3 \
   --allow-unauthenticated \
-  --service-account="cloudbuild-deployer@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --config=Dockerfile.api
+  --service-account="cloudbuild-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
+  
 
 ### Kosten & Monitoring
 
