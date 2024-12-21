@@ -1,28 +1,10 @@
-fimport csv
-from datetime import datetime
 import os
+import sys
+import csv
+from datetime import datetime
+from src.core.logger import logger
 
-# CSV Logger Setup
-LOG_FILE = 'analogies_log.csv'
-CSV_HEADERS = ['timestamp', 'language', 'word1', 'word2', 'word3', 'output']
-
-# Datei erstellen, falls sie nicht existiert
-if not os.path.exists(LOG_FILE):
-    with open(LOG_FILE, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(CSV_HEADERS)
-
-def log_to_csv(language, word1, word2, word3, output):
-    with open(LOG_FILE, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            language,
-            word1,
-            word2,
-            word3,
-            output
-        ])
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @app.post("/analogy")
 async def get_analogy(request: AnalogyRequest):
@@ -30,7 +12,8 @@ async def get_analogy(request: AnalogyRequest):
     results, _ = handler.find_analogy(request.word1, request.word2, request.word3, "")
     result = results[0][0] if results else None
     
-    log_to_csv(
+    logger.log(
+        'api',
         request.language,
         request.word1,
         request.word2,

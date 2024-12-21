@@ -4,9 +4,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 import fasttext
 import fasttext.util
 import streamlit as st
-
-import os
 from google.cloud import storage
+from src.core.logger import logger
+
 
 class EmbeddingHandler:
     # Basis-Pfade basierend auf Umgebung
@@ -190,6 +190,15 @@ class EmbeddingHandler:
             return results, None
             
         except Exception as e:
+            # Log den Fehler
+            logger.log(
+                'error',
+                self.language,
+                word1,
+                word2,
+                word3,
+                f"Error: {str(e)}"
+            )
             raise Exception(f"Fehler bei der Analogieberechnung: {str(e)}")
 
     def find_similar_words(self, word: str, n: int = 10):

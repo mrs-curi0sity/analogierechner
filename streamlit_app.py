@@ -1,6 +1,11 @@
 import streamlit as st
 from streamlit.components.v1 import html
 from src.core.embedding_handler import EmbeddingHandler
+import sys
+import os
+from src.core.logger import logger
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @st.cache_resource
 def load_embedding_handler(language):
@@ -66,6 +71,18 @@ def main():
         with st.spinner('Berechne Analogie...'):
             try:
                 results, _ = embedding_handler.find_analogy(word1, word2, word3, "")
+
+                # Logging
+                logger.log(
+                    'ui',
+                    language,  # 'en' oder 'de' aus dem Selector
+                    word1,
+                    word2,
+                    word3,
+                    best_result
+                )
+
+                
                 # Große, klare Ergebnisaussage
                 st.markdown("---")
                 st.markdown(f"## 🎯 Ergebnis:")
