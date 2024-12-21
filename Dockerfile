@@ -1,4 +1,3 @@
-# Python 3.11 statt 3.9 verwenden
 FROM python:3.11-slim
 
 WORKDIR /app

@@ -5,33 +5,56 @@ import fasttext
 import fasttext.util
 import streamlit as st
 
+import os
+from google.cloud import storage
+
 class EmbeddingHandler:
     # Basis-Pfade basierend auf Umgebung
     BASE_PATH = "gs://analogierechner-models/data" if os.getenv("ENVIRONMENT") == "cloud" else "data"
     
-    MODEL_CONFIGS = {
-        'de': {
-            'type': 'fasttext',
-            'path': f'{BASE_PATH}/cc.de.300.bin',
-            'word_list_path': f'{BASE_PATH}/de_50k_most_frequent.txt'
-        },
-        'en': {
-            'type': 'glove',
-            'path': f'{BASE_PATH}/glove.6B.100d.txt',
-            'word_list_path': f'{BASE_PATH}/en_50k_most_frequent.txt'
-        }
-    }
+    def _download_from_gcs(self, gs_path, local_path):
+        """Downloads a file from Google Cloud Storage"""
+        try:
+            bucket_name = gs_path.replace("gs://", "").split("/")[0]
+            blob_name = "/".join(gs_path.replace(f"gs://{bucket_name}/", "").split("/"))
+            
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+            
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            blob.download_to_filename(local_path)
+            return local_path
+        except Exception as e:
+            st.error(f"Download error: {str(e)}")
+            raise e
 
     def _get_file_path(self, path):
         """Handhabt Dateizugriff basierend auf Umgebung"""
-        if os.getenv("ENVIRONMENT") == "cloud" and path.startswith(self.BASE_PATH):
-            # In Cloud: Download von GCS
+        st.write(f"Environment: {os.getenv('ENVIRONMENT')}")
+        st.write(f"Original path: {path}")
+        
+        if os.getenv("ENVIRONMENT") == "cloud":
+            if not path.startswith("gs://"):
+                # Konvertiere lokalen Pfad zu GCS Pfad
+                path = f"gs://analogierechner-models/{path}"
             local_path = f'/tmp/{os.path.basename(path)}'
-            self._download_from_gcs(path, local_path)
-            return local_path
-        # Lokal: direkter Zugriff
+            st.write(f"Downloading {path} to {local_path}")
+            return self._download_from_gcs(path, local_path)
         return path
 
+    MODEL_CONFIGS = {
+        'de': {
+            'type': 'fasttext',
+            'path': 'data/cc.de.300.bin',
+            'word_list_path': 'data/de_50k_most_frequent.txt'
+        },
+        'en': {
+            'type': 'glove',
+            'path': 'data/glove.6B.100d.txt',
+            'word_list_path': 'data/en_50k_most_frequent.txt'
+        }
+    }
 
     def __init__(self, language='de'):
         self.config = self.MODEL_CONFIGS[language]
@@ -44,6 +67,7 @@ class EmbeddingHandler:
         self._model = None
         self._word_list = None
         self._embedding_cache = {}
+
         
 
     @property
