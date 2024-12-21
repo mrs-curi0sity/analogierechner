@@ -57,6 +57,6 @@ if __name__ == "__main__":
     # Beispiel-Nutzung
     INPUT_PATH = "data/analogies.csv"
     OUTPUT_PATH = "data/analogies_results.csv"
-    API_URL = "http://your-cloud-run-url"  # Anpassen!
+    API_URL = "https://analogierechner-762862809820.europe-west3.run.app"  # Anpassen!
     
     process_csv(INPUT_PATH, OUTPUT_PATH, API_URL)

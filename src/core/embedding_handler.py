@@ -29,32 +29,40 @@ class EmbeddingHandler:
             st.error(f"Download error: {str(e)}")
             raise e
 
-    def _get_file_path(self, path):
-        """Handhabt Dateizugriff basierend auf Umgebung"""
-        st.write(f"Environment: {os.getenv('ENVIRONMENT')}")
-        st.write(f"Original path: {path}")
-        
-        if os.getenv("ENVIRONMENT") == "cloud":
-            if not path.startswith("gs://"):
-                # Konvertiere lokalen Pfad zu GCS Pfad
-                path = f"gs://analogierechner-models/{path}"
-            local_path = f'/tmp/{os.path.basename(path)}'
-            st.write(f"Downloading {path} to {local_path}")
-            return self._download_from_gcs(path, local_path)
-        return path
-
+    
     MODEL_CONFIGS = {
         'de': {
             'type': 'fasttext',
-            'path': 'data/cc.de.300.bin',
-            'word_list_path': 'data/de_50k_most_frequent.txt'
+            'local_path': 'data/cc.de.300.bin',
+            'cloud_path': 'gs://analogierechner-models/data/cc.de.300.bin',
+            'local_word_list': 'data/de_50k_most_frequent.txt',
+            'cloud_word_list': 'gs://analogierechner-models/data/de_50k_most_frequent.txt'
         },
         'en': {
             'type': 'glove',
-            'path': 'data/glove.6B.100d.txt',
-            'word_list_path': 'data/en_50k_most_frequent.txt'
+            'local_path': 'data/glove.6B.100d.txt',
+            'cloud_path': 'gs://analogierechner-models/data/glove.6B.100d.txt',
+            'local_word_list': 'data/en_50k_most_frequent.txt',
+            'cloud_word_list': 'gs://analogierechner-models/data/en_50k_most_frequent.txt'
         }
     }
+    
+    def _get_file_path(self, path):
+        """Handhabt Dateizugriff basierend auf Umgebung"""
+        environment = os.getenv("ENVIRONMENT", "local")
+        
+        if environment == "cloud":
+            # Für Cloud-Umgebung: Wenn lokaler Pfad übergeben, ersetze ihn durch Cloud-Pfad
+            for lang_config in self.MODEL_CONFIGS.values():
+                if path == lang_config['local_path']:
+                    path = lang_config['cloud_path']
+                elif path == lang_config['local_word_list']:
+                    path = lang_config['cloud_word_list']
+            
+            local_path = f'/tmp/{os.path.basename(path)}'
+            return self._download_from_gcs(path, local_path)
+        
+        return path
 
     def __init__(self, language='de'):
         # Sprache speichern
