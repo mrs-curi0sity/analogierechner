@@ -29,7 +29,6 @@ class EmbeddingHandler:
             st.error(f"Download error: {str(e)}")
             raise e
 
-    
     MODEL_CONFIGS = {
         'de': {
             'type': 'fasttext',
@@ -50,6 +49,8 @@ class EmbeddingHandler:
     def _get_file_path(self, path):
         """Handhabt Dateizugriff basierend auf Umgebung"""
         environment = os.getenv("ENVIRONMENT", "local")
+        st.write(f"Environment: {environment}")
+        st.write(f"Original path: {path}")
         
         if environment == "cloud":
             # Für Cloud-Umgebung: Wenn lokaler Pfad übergeben, ersetze ihn durch Cloud-Pfad
@@ -60,26 +61,45 @@ class EmbeddingHandler:
                     path = lang_config['cloud_word_list']
             
             local_path = f'/tmp/{os.path.basename(path)}'
+            st.write(f"Downloading {path} to {local_path}")
             return self._download_from_gcs(path, local_path)
         
         return path
 
     def __init__(self, language='de'):
-        # Sprache speichern
         self.language = language
-        
-        # Rest bleibt gleich
         self.config = self.MODEL_CONFIGS[language]
         self.model_type = self.config['type']
         
-        # Pfade entsprechend der Umgebung auflösen
-        self.model_path = self._get_file_path(self.config['path'])
-        self.word_list_path = self._get_file_path(self.config['word_list_path'])
+        # Korrekte Schlüssel verwenden
+        self.model_path = self._get_file_path(self.config['local_path'])
+        self.word_list_path = self._get_file_path(self.config['local_word_list'])
         
         self._model = None
         self._word_list = None
         self._embedding_cache = {}
+
+    def _load_glove(self, path):
+        """Lädt GloVe Embeddings aus einer Textdatei"""
+        embeddings = {}
+        word_list = set()  # Set für schnellere Lookups
         
+        # Korrekten Schlüssel verwenden
+        if self.config['local_word_list']:
+            with open(self.word_list_path, 'r', encoding='utf-8') as f:
+                word_list = {line.strip().split()[0].lower() for line in f}
+        
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    values = line.split()
+                    word = values[0]
+                    if not word_list or word in word_list:  # wenn keine Liste da ist oder Wort in Liste
+                        vector = np.asarray(values[1:], dtype='float32')
+                        embeddings[word] = vector
+            return embeddings
+        except Exception as e:
+            raise Exception(f"Fehler beim Laden der GloVe Embeddings: {str(e)}")
 
     @property
     def model(self):
@@ -93,28 +113,6 @@ class EmbeddingHandler:
                 self._model = self._load_glove(self.model_path)
         return self._model
     
-    def _load_glove(self, path):
-        """Lädt GloVe Embeddings aus einer Textdatei"""
-        embeddings = {}
-        word_list = set()  # Set für schnellere Lookups
-        
-        # Erst Wortliste laden
-        if self.config['word_list_path']:
-            with open(self.config['word_list_path'], 'r', encoding='utf-8') as f:
-                word_list = {line.strip().split()[0].lower() for line in f}
-        
-        # Dann nur diese Wörter aus GloVe laden
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    values = line.split()
-                    word = values[0]
-                    if not word_list or word in word_list:  # wenn keine Liste da ist oder Wort in Liste
-                        vector = np.asarray(values[1:], dtype='float32')
-                        embeddings[word] = vector
-            return embeddings
-        except Exception as e:
-            raise Exception(f"Fehler beim Laden der GloVe Embeddings: {str(e)}")
 
     @property
     def word_list(self):

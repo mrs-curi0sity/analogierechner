@@ -107,8 +107,10 @@ gsutil cp data/de_50k_most_frequent.txt gs://${PROJECT_ID}_models/data/
 gsutil cp data/en_50k_most_frequent.txt gs://${PROJECT_ID}_models/data/
 ```
 
-6 App und API deployen
+6. App und API deployen
 ```bash
+gcloud auth login
+
 gcloud run deploy analogierechner \
   --source . \
   --platform managed \
@@ -116,7 +118,21 @@ gcloud run deploy analogierechner \
   --allow-unauthenticated \
   --service-account="cloudbuild-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
-  
+
+# lokal
+```bash
+## Entwicklung mit Logs
+docker-compose up --build
+
+## Entwicklung im Hintergrund
+docker-compose up -d --build
+
+## Logs anschauen
+docker-compose logs -f
+
+## Container stoppen
+docker-compose down
+```
 
 ### Kosten & Monitoring
 
