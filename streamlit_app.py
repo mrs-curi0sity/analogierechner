@@ -22,7 +22,7 @@ def main():
     if 'embeddings_cache' not in st.session_state:
         st.session_state.embeddings_cache = {}
     
-    st.title("Analogierechner: Semantische Analyse")
+    st.title("Analogierechner 2.0 - Wortrelationen")
     
     language = st.sidebar.selectbox(
         "Sprache / Language",

@@ -150,10 +150,10 @@ docker-compose down
 ```
 analogierechner/
 ├── data/                    # Modell-Dateien
+├── logs/                    
 ├── src/
 │   ├── core/               # Core Funktionalität
 │   │   └── embedding_handler.py
-│   └── components/         # UI Komponenten
 ├── streamlit_app.py        # Hauptanwendung
 ├── Dockerfile
 ├── pyproject.toml
@@ -164,8 +164,9 @@ analogierechner/
 - Streamlit für das Frontend
 - FastText & GloVe für Word Embeddings
 - Poetry für Dependency Management
-- Google Cloud Run für Hosting
 - Google Cloud Storage für Modell-Speicherung
+- Google Cloud Deploy für Deployment
+- Google Cloud Run für Hosting
 
 
 # source of word list
