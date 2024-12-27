@@ -131,7 +131,7 @@ class EmbeddingHandler:
             raise
 
     
-  def _get_file_path(self, path):
+    def _get_file_path(self, path):
         """Handhabt Dateizugriff basierend auf Umgebung"""
         environment = os.getenv("ENVIRONMENT", "local")
         st.write(f"Environment: {environment}")

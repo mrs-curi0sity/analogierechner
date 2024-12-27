@@ -1,7 +1,27 @@
-.git
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Poetry
+.venv/
+dist/
+*.egg-info/
+
+# Development/IDE
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp
+
+# Environment
 .env
-.venv
-__pycache__
-*.pyc
-data/*.bin
-*.txt
+.env.*
+!.env.example
+
+# Local development
+data/
+*.log
+.DS_Store
