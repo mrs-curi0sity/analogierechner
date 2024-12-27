@@ -8,7 +8,8 @@ services:
       - "8080:8080"  # Streamlit
       - "8081:8081"  # API
     volumes:
-      - ./data:/app/data  # Mount lokales data Verzeichnis
+      - ./data:/app/data
+      - ./logs:/app/logs  # Diese Zeile muss da sein
     env_file:
       - .env.local
     environment:
