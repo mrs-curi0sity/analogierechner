@@ -1,7 +1,20 @@
+import os
 import pandas as pd
 import requests
 from typing import List
 from time import sleep
+
+
+# Umgebungsvariablen
+ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
+
+# Base Paths
+BASE_PATH = "gs://analogierechner-models/data" if ENVIRONMENT == "cloud" else "data"
+API_URL = "https://analogierechner-762862809820.europe-west3.run.app" if ENVIRONMENT == "cloud" else "http://localhost:8081"
+
+# Input/Output Paths
+INPUT_PATH = os.path.join(BASE_PATH, "analogies.csv")
+OUTPUT_PATH = os.path.join(BASE_PATH, "analogies_results.csv")
 
 def process_csv(input_path: str, output_path: str, api_url: str, batch_size: int = 10):
     """
@@ -54,9 +67,9 @@ def process_csv(input_path: str, output_path: str, api_url: str, batch_size: int
     print(f"Results saved to {output_path}")
 
 if __name__ == "__main__":
-    # Beispiel-Nutzung
-    INPUT_PATH = "data/analogies.csv"
-    OUTPUT_PATH = "data/analogies_results.csv"
-    API_URL = "https://analogierechner-762862809820.europe-west3.run.app"  # Anpassen!
+    print(f"Running in {ENVIRONMENT} environment")
+    print(f"Using API: {API_URL}")
+    print(f"Reading from: {INPUT_PATH}")
+    print(f"Writing to: {OUTPUT_PATH}")
     
     process_csv(INPUT_PATH, OUTPUT_PATH, API_URL)
