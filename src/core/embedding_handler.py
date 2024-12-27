@@ -6,11 +6,14 @@ import fasttext.util
 import streamlit as st
 from google.cloud import storage
 from src.core.logger import logger
+from datasketch import MinHashLSH, MinHash
+from typing import List, Tuple, Dict
+
 
 
 class EmbeddingHandler:
     # Basis-Pfade basierend auf Umgebung
-    BASE_PATH = "gs://analogierechner-models/data" if os.getenv("ENVIRONMENT") == "cloud" else "data"
+    # BASE_PATH = "gs://analogierechner-models/data" if os.getenv("ENVIRONMENT") == "cloud" else "data"
 
 
     MODEL_CONFIGS = {
@@ -156,42 +159,50 @@ class EmbeddingHandler:
 
 
     def get_embedding(self, word):
-        """Holt Embedding für ein Wort"""
-        st.write(f"Getting embedding for word: {word}")
         word_lower = word.lower()
         
-        # Prüfe Cache
-        if word_lower in self._embedding_cache:
-            st.write("Found in cache")
-            return self._embedding_cache[word_lower]
+        if self._word_embeddings is None:
+            self._word_embeddings = {}
+            
+        if word_lower in self._word_embeddings:
+            return self._word_embeddings[word_lower]
             
         try:
             if self.model_type == 'glove':
-                st.write("Using GloVe embeddings")
-                # Für englische Wörter
                 if word_lower not in self.model:
-                    st.error(f"Word '{word}' not found in vocabulary")
-                    raise ValueError(f"Das Wort '{word}' wurde nicht im englischen Vokabular gefunden")
-                st.write("Word found in vocabulary")
+                    raise ValueError(f"Word '{word}' not found in vocabulary")
                 embedding = self.model[word_lower]
             else:
-                st.write("Using FastText embeddings")
-                # Für deutsche Wörter
                 embedding = self.model.get_word_vector(word)
                 
-            self._embedding_cache[word_lower] = embedding
-            st.write("Embedding cached")
+            self._word_embeddings[word_lower] = embedding
+            self._save_cached_embeddings()
             return embedding
                 
         except Exception as e:
-            st.error(f"Error getting embedding: {str(e)}")
-            if self.language == 'en':
-                raise ValueError(f"Das Wort '{word}' wurde nicht im englischen Vokabular gefunden")
-            else:
-                raise ValueError(f"Das Wort '{word}' wurde nicht im deutschen Vokabular gefunden")
+            raise ValueError(f"Word '{word}' not found in vocabulary")
+    
+    def _load_cached_embeddings(self):
+        """Load embeddings from cache file if it exists"""
+        cache_path = self.config['cache_path']
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, 'rb') as f:
+                    self._word_embeddings = pickle.load(f)
+                logger.info(f"Loaded {len(self._word_embeddings)} embeddings from cache")
+            except Exception as e:
+                logger.error(f"Failed to load cache: {e}")
+                self._word_embeddings = {}
+    
+    def _save_cached_embeddings(self):
+        """Save embeddings to cache file"""
+        try:
+            with open(self.config['cache_path'], 'wb') as f:
+                pickle.dump(self._word_embeddings, f)
+        except Exception as e:
+            logger.error(f"Failed to save cache: {e}")
 
-
-
+    
 
     def _load_glove(self, path):
         """Lädt GloVe Embeddings aus einer Textdatei"""
