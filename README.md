@@ -127,6 +127,11 @@ docker-compose up --build
 ## Entwicklung im Hintergrund
 docker-compose up -d --build
 
+=> danach: http://localhost:8080
+
+## um den memory usage zu sehen:
+docker stats
+
 ## Logs anschauen
 docker-compose logs -f
 
