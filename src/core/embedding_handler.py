@@ -1,4 +1,6 @@
 import os
+import time
+import pickle
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import fasttext
@@ -10,162 +12,342 @@ from datasketch import MinHashLSH, MinHash
 from typing import List, Tuple, Dict
 
 
-
 class EmbeddingHandler:
-    # Basis-Pfade basierend auf Umgebung
-    # BASE_PATH = "gs://analogierechner-models/data" if os.getenv("ENVIRONMENT") == "cloud" else "data"
 
-
+    """
+    LSH (Locality-Sensitive Hashing) für Word Embeddings:
+    1. Beim Start werden alle Wort-Embeddings in LSH-Buckets einsortiert
+    2. Ähnliche Vektoren landen mit hoher Wahrscheinlichkeit im gleichen Bucket
+    3. Bei der Analogiesuche müssen nur noch Wörter aus relevanten Buckets verglichen werden
+    4. Dies reduziert die Suche von O(n) auf O(b) wo b die Bucket-Größe ist
+    """
+    
+    # Cloud path prefix - leer für lokale Entwicklung
+    CLOUD_PREFIX = "gs://analogierechner-models/" if os.getenv("ENVIRONMENT") == "cloud" else ""
+    LSH_NUM_PERM = 128
+    LSH_THRESHOLD = 0.5
+    
     MODEL_CONFIGS = {
         'de': {
             'type': 'fasttext',
-            'local_path': 'data/cc.de.300.bin',
-            'cloud_path': 'gs://analogierechner-models/data/cc.de.300.bin',
-            'local_word_list': 'data/de_50k_most_frequent.txt',
-            'cloud_word_list': 'gs://analogierechner-models/data/de_50k_most_frequent.txt'
+            'model_path': 'data/cc.de.100.bin',
+            'word_list_path': 'data/de_50k_most_frequent.txt',
+            'lsh_path': '/tmp/lsh_index_de.pkl'
         },
         'en': {
             'type': 'glove',
-            'local_path': 'data/glove.6B.100d.txt',
-            'cloud_path': 'gs://analogierechner-models/data/glove.6B.100d.txt',
-            'local_word_list': 'data/en_50k_most_frequent.txt',
-            'cloud_word_list': 'gs://analogierechner-models/data/en_50k_most_frequent.txt'
+            'model_path': 'data/glove.6B.100d.txt',
+            'word_list_path': 'data/en_50k_most_frequent.txt',
+            'lsh_path': '/tmp/lsh_index_en.pkl'
         }
     }
 
 
     def __init__(self, language='de'):
-        st.write("=== Initializing EmbeddingHandler ===")
+        logger.info(f"Initializing EmbeddingHandler for {language}")
         self.language = language
         self.config = self.MODEL_CONFIGS[language]
         self.model_type = self.config['type']
         
         # Pfade auflösen
-        st.write(f"Resolving paths for {language} model...")
-        self.model_path = self._get_file_path(self.config['local_path'])
-        self.word_list_path = self._get_file_path(self.config['local_word_list'])
-        st.write(f"Model path: {self.model_path}")
-        st.write(f"Word list path: {self.word_list_path}")
+        self.model_path = self._get_file_path(self.config['model_path'])
+        self.word_list_path = self._get_file_path(self.config['word_list_path'])
+        
+        # LSH Komponenten - beide mit gleichem num_perm
+        self.lsh = MinHashLSH(threshold=self.LSH_THRESHOLD, num_perm=self.LSH_NUM_PERM)
+        self.word_to_minhash: Dict[str, MinHash] = {}
         
         self._model = None
         self._word_list = None
         self._embedding_cache = {}
+        
+        # LSH Index initial aufbauen
+        start_time = time.time()
+        self._initialize_lsh()
+        logger.info(f"LSH initialization took {time.time() - start_time:.2f} seconds")
+
+
+
+    def _vector_to_minhash(self, vector: np.ndarray) -> MinHash:
+        """Konvertiert Embedding-Vektor zu MinHash"""
+        # MinHash direkt mit dem gleichen num_perm erstellen wie bei LSH
+        mh = MinHash(num_perm=self.LSH_NUM_PERM)  # Fester Wert, muss gleich sein wie bei LSH Init
+        bins = (vector * 100).astype(int)
+        for i, value in enumerate(bins):
+            mh.update(f"{i}:{value}".encode('utf-8'))
+        return mh
+    
+    def _get_file_path(self, path):
+        """Handhabt Dateizugriff basierend auf Umgebung"""
+        if self.CLOUD_PREFIX:
+            cloud_path = self.CLOUD_PREFIX + path
+            local_path = f"/tmp/{os.path.basename(path)}"
+            return self._download_from_gcs(cloud_path, local_path)
+        return path
+
+
+
+    def _initialize_lsh(self):
+        """Initialisiert oder lädt LSH Index"""
+        if os.path.exists(self.config['lsh_path']):
+            self._load_lsh_index()
+        else:
+            logger.info("Creating new LSH index")
+            self._build_lsh_index()
+
+
+    def _build_lsh_index(self):
+        """Baut LSH Index aus Wortliste"""
+        logger.info("Building LSH index...")
+        for word in self.word_list:
+            try:
+                embedding = self.get_embedding(word)
+                mh = self._vector_to_minhash(embedding)
+                self.word_to_minhash[word] = mh
+                self.lsh.insert(word, mh)
+            except Exception as e:
+                logger.warning(f"Couldn't add word to LSH index: {word}, {str(e)}")
+        self._save_lsh_index()
+
+    def _save_lsh_index(self):
+        """Speichert LSH Index"""
+        try:
+            with open(self.config['lsh_path'], 'wb') as f:
+                pickle.dump({
+                    'lsh': self.lsh,
+                    'word_to_minhash': self.word_to_minhash
+                }, f)
+        except Exception as e:
+            logger.error(f"Failed to save LSH index: {str(e)}")
+
+    def _load_lsh_index(self):
+        """Lädt gespeicherten LSH Index"""
+        try:
+            with open(self.config['lsh_path'], 'rb') as f:
+                data = pickle.load(f)
+                self.lsh = data['lsh']
+                self.word_to_minhash = data['word_to_minhash']
+        except Exception as e:
+            logger.error(f"Failed to load LSH index: {str(e)}")
+            self._build_lsh_index()
+
+    # Bestehende Methoden bleiben größtenteils gleich...
+
+    def find_analogy(self, word1, word2, word3, expected_result="", n=5):
+        """Optimierte Analogieberechnung mit LSH"""
+        try:
+            # Embeddings berechnen
+            emb1 = self.get_embedding(word1)
+            emb2 = self.get_embedding(word2)
+            emb3 = self.get_embedding(word3)
+            
+            # Vektordifferenz und Zielvektor
+            diff_vector = emb2 - emb1
+            target_vector = emb3 + diff_vector
+            
+            # LSH für Kandidatenauswahl
+            target_mh = self._vector_to_minhash(target_vector)
+            candidates = self.lsh.query(target_mh)
+            
+            # Kandidaten filtern
+            exclude_words = {word1.lower(), word2.lower(), word3.lower()}
+            candidates = [w for w in candidates if w.lower() not in exclude_words]
+            
+            # Ähnlichkeiten nur für LSH-Kandidaten berechnen
+            similarities = []
+            for word in candidates:
+                try:
+                    word_embedding = self.get_embedding(word)
+                    sim = cosine_similarity([target_vector], [word_embedding])[0][0]
+                    similarities.append((word, sim))
+                except:
+                    continue
+            logger.info(f"LSH found {len(candidates)} candidates to evaluate")
+            if similarities:
+                logger.info(f"Similarity range: {min(s[1] for s in similarities):.3f} to {max(s[1] for s in similarities):.3f}")
+                            
+            # Top-N Results
+            results = sorted(similarities, key=lambda x: x[1], reverse=True)[:n]
+
+            if not results:
+                logger.warning("No results found via LSH, falling back to full search")
+                return self._find_analogy_full_search(word1, word2, word3, n)
+            
+            return results, None, None
+        
+            
+        except Exception as e:
+            logger.error(f"Error in analogy calculation: {str(e)}")
+            raise
+
+    def _find_analogy_full_search(self, word1, word2, word3, n=5):
+        """Fallback zur vollständigen Suche"""
+        try:
+            # Embeddings berechnen
+            emb1 = self.get_embedding(word1)
+            emb2 = self.get_embedding(word2)
+            emb3 = self.get_embedding(word3)
+
+            # Debug: Ähnlichkeit zwischen Eingabewörtern
+            input_similarity = cosine_similarity([emb1], [emb2])[0][0]
+            norm1 = np.linalg.norm(emb1)
+            norm2 = np.linalg.norm(emb2)
+            norm3 = np.linalg.norm(emb3)
+            
+            # Vektordifferenz und Zielvektor
+            diff_vector = emb2 - emb1
+            target_vector = emb3 + diff_vector
+            
+            # Kandidaten filtern
+            exclude_words = {word1.lower(), word2.lower(), word3.lower()}
+            candidates = [w for w in self.word_list if w.lower() not in exclude_words]
+            
+            # Similarities berechnen
+            similarities = []
+            for word in candidates:
+                try:
+                    word_embedding = self.get_embedding(word)
+                    sim = cosine_similarity([target_vector], [word_embedding])[0][0]
+                    similarities.append((word, sim))
+                except:
+                    continue
+            
+            # Top-N Results
+            results = sorted(similarities, key=lambda x: x[1], reverse=True)[:n]
+                
+            debug_info = {
+                'input_similarity': input_similarity,
+                'output_similarity': cosine_similarity([emb3], [self.get_embedding(results[0][0])])[0][0],
+                'vector_norm': np.linalg.norm(diff_vector),
+                'norm_word1': norm1,
+                'norm_word2': norm2,
+                'norm_word3': norm3,
+                'norm_result': np.linalg.norm(self.get_embedding(results[0][0]))
+            }
+            
+            return results, None, debug_info
+            
+        except Exception as e:
+            logger.error(f"Error in full analogy search: {str(e)}")
+            raise
+
 
     @property
     def model(self):
         if self._model is None:
-            st.write(f"Loading model for type: {self.model_type}")
-            st.write(f"Using path: {self.model_path}")
+            logger.info(f"Loading model for type: {self.model_type}")
+            logger.info(f"Using path: {self.model_path}")
             if self.model_type == 'fasttext':
+                logger.info("Starting FastText model load...")
                 self._model = fasttext.load_model(self.model_path)
+                logger.info("FastText model loaded successfully")
             elif self.model_type == 'glove':
                 self._model = self._load_glove(self.model_path)
         return self._model
     
-    def _download_from_gcs(self, gs_path, local_path):
-        """Downloads a file from Google Cloud Storage with extensive debugging"""
+    @property
+    def word_list(self):
+        """Brauchen wir für LSH Index Building und Kandidatenfilterung"""
+        if self._word_list is None:
+            logger.info("Loading word list...")
+            if self.model_type == 'fasttext':
+                self._word_list = self.load_word_list(self.word_list_path)
+            else:  # glove
+                self._word_list = list(self.model.keys())
+        return self._word_list
+
+  
+    def load_word_list(self, path):
+        """Lädt eine Wortliste aus einer Textdatei"""
         try:
-            st.write("=== Starting GCS Download ===")
-            st.write(f"From GCS path: {gs_path}")
-            st.write(f"To local path: {local_path}")
+            st.write(f"Loading word list from: {path}")
+            with open(path, 'r', encoding='utf-8') as f:
+                words = [line.strip().split(" ")[0].lower() for line in f]
+            st.write(f"Loaded {len(words)} words")
+            return words
+        except Exception as e:
+            st.error(f"Error loading word list: {str(e)}")
+            raise
+        
+    
+    def _download_from_gcs(self, gs_path, local_path):
+        """Downloads a file from Google Cloud Storage"""
+        try:
+            logger.info("=== Starting GCS Download ===")
+            logger.info(f"From GCS path: {gs_path}")
+            logger.info(f"To local path: {local_path}")
             
             # Parse bucket and blob
             bucket_name = gs_path.replace("gs://", "").split("/")[0]
             blob_name = "/".join(gs_path.replace(f"gs://{bucket_name}/", "").split("/"))
             
-            st.write(f"Parsed bucket name: {bucket_name}")
-            st.write(f"Parsed blob name: {blob_name}")
+            logger.debug(f"Parsed bucket name: {bucket_name}")
+            logger.debug(f"Parsed blob name: {blob_name}")
             
             # Initialize client
-            st.write("Initializing storage client...")
+            logger.info("Initializing storage client...")
             try:
                 storage_client = storage.Client()
-                st.write("Storage client initialized successfully")
+                logger.debug("Storage client initialized successfully")
             except Exception as e:
-                st.error(f"Failed to initialize storage client: {str(e)}")
+                logger.error(f"Failed to initialize storage client: {str(e)}")
                 raise
                 
             # Get bucket
-            st.write(f"Getting bucket {bucket_name}...")
+            logger.debug(f"Getting bucket {bucket_name}...")
             try:
                 bucket = storage_client.bucket(bucket_name)
-                st.write("Got bucket successfully")
+                logger.debug("Got bucket successfully")
             except Exception as e:
-                st.error(f"Failed to get bucket: {str(e)}")
+                logger.error(f"Failed to get bucket: {str(e)}")
                 raise
                 
             # Get blob
-            st.write(f"Getting blob {blob_name}...")
+            logger.debug(f"Getting blob {blob_name}...")
             try:
                 blob = bucket.blob(blob_name)
-                st.write("Got blob successfully")
+                logger.debug("Got blob successfully")
             except Exception as e:
-                st.error(f"Failed to get blob: {str(e)}")
+                logger.error(f"Failed to get blob: {str(e)}")
                 raise
                 
             # Check if blob exists
-            st.write("Checking if blob exists...")
+            logger.debug("Checking if blob exists...")
             if not blob.exists():
-                st.error(f"Blob does not exist: {gs_path}")
+                logger.error(f"Blob does not exist: {gs_path}")
                 raise FileNotFoundError(f"Blob does not exist: {gs_path}")
-            st.write("Blob exists!")
+            logger.debug("Blob exists!")
             
             # Create directory if needed
-            st.write(f"Creating directory {os.path.dirname(local_path)}...")
+            logger.debug(f"Creating directory {os.path.dirname(local_path)}...")
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
             
             # Download
-            st.write("Starting download...")
+            logger.info("Starting download...")
             blob.download_to_filename(local_path)
             
             # Verify download
             if os.path.exists(local_path):
                 size = os.path.getsize(local_path)
-                st.write(f"Download successful! File size: {size} bytes")
+                logger.info(f"Download successful! File size: {size} bytes")
                 return local_path
             else:
-                st.error("Download seemed to succeed but file not found!")
+                logger.error("Download seemed to succeed but file not found!")
                 raise FileNotFoundError(f"File not found after download: {local_path}")
                 
         except Exception as e:
-            st.error("=== Download Failed ===")
-            st.error(f"Error type: {type(e)}")
-            st.error(f"Error message: {str(e)}")
+            logger.error("=== Download Failed ===")
+            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Error message: {str(e)}")
             raise
 
+
     
-    def _get_file_path(self, path):
-        """Handhabt Dateizugriff basierend auf Umgebung"""
-        environment = os.getenv("ENVIRONMENT", "local")
-        st.write(f"Environment: {environment}")
-        st.write(f"Original path: {path}")
-        
-        if environment == "cloud":
-            # Finde den entsprechenden Cloud-Pfad
-            for config in self.MODEL_CONFIGS.values():
-                if path == config['local_path']:
-                    cloud_path = config['cloud_path']
-                    local_path = f"/tmp/{os.path.basename(cloud_path)}"
-                    st.write(f"Downloading model from {cloud_path} to {local_path}")
-                    return self._download_from_gcs(cloud_path, local_path)
-                elif path == config['local_word_list']:
-                    cloud_path = config['cloud_word_list']
-                    local_path = f"/tmp/{os.path.basename(cloud_path)}"
-                    st.write(f"Downloading word list from {cloud_path} to {local_path}")
-                    return self._download_from_gcs(cloud_path, local_path)
-        
-        return path
-
-
-
     def get_embedding(self, word):
         word_lower = word.lower()
         
-        if self._word_embeddings is None:
-            self._word_embeddings = {}
-            
-        if word_lower in self._word_embeddings:
-            return self._word_embeddings[word_lower]
+        if word_lower in self._embedding_cache:
+            return self._embedding_cache[word_lower]
             
         try:
             if self.model_type == 'glove':
@@ -175,33 +357,11 @@ class EmbeddingHandler:
             else:
                 embedding = self.model.get_word_vector(word)
                 
-            self._word_embeddings[word_lower] = embedding
-            self._save_cached_embeddings()
+            self._embedding_cache[word_lower] = embedding
             return embedding
                 
         except Exception as e:
             raise ValueError(f"Word '{word}' not found in vocabulary")
-    
-    def _load_cached_embeddings(self):
-        """Load embeddings from cache file if it exists"""
-        cache_path = self.config['cache_path']
-        if os.path.exists(cache_path):
-            try:
-                with open(cache_path, 'rb') as f:
-                    self._word_embeddings = pickle.load(f)
-                logger.info(f"Loaded {len(self._word_embeddings)} embeddings from cache")
-            except Exception as e:
-                logger.error(f"Failed to load cache: {e}")
-                self._word_embeddings = {}
-    
-    def _save_cached_embeddings(self):
-        """Save embeddings to cache file"""
-        try:
-            with open(self.config['cache_path'], 'wb') as f:
-                pickle.dump(self._word_embeddings, f)
-        except Exception as e:
-            logger.error(f"Failed to save cache: {e}")
-
     
 
     def _load_glove(self, path):
@@ -241,96 +401,7 @@ class EmbeddingHandler:
             st.error(f"Error message: {str(e)}")
             raise Exception(f"Fehler beim Laden der GloVe Embeddings: {str(e)}")
 
-    
-    
-    @property
-    def word_list(self):
-        if self._word_list is None:
-            st.write("=== Loading Word List ===")
-            if self.model_type == 'fasttext' and self.word_list_path:
-                st.write(f"Loading FastText word list from: {self.word_list_path}")
-                self._word_list = self.load_word_list(self.word_list_path)
-            else:  # glove
-                st.write("Using GloVe vocabulary as word list")
-                self._word_list = list(self.model.keys())
-            st.write(f"Loaded {len(self._word_list)} words")
-        return self._word_list
-    
-    def load_word_list(self, path):
-        """Lädt eine Wortliste aus einer Textdatei"""
-        try:
-            st.write(f"Loading word list from: {path}")
-            with open(path, 'r', encoding='utf-8') as f:
-                words = [line.strip().split(" ")[0].lower() for line in f]
-            st.write(f"Loaded {len(words)} words")
-            return words
-        except Exception as e:
-            st.error(f"Error loading word list: {str(e)}")
-            raise
-    
-
-
-    def find_analogy(self, word1, word2, word3, expected_result="", n=5):
-       """Berechnet Wort-Analogien"""
-       try:
-           # Embeddings berechnen
-           emb1 = self.get_embedding(word1)
-           emb2 = self.get_embedding(word2)
-           emb3 = self.get_embedding(word3)
-           
-           # Debug: Ähnlichkeit zwischen Eingabewörtern
-           input_similarity = cosine_similarity([emb1], [emb2])[0][0]
-           norm1 = np.linalg.norm(emb1)
-           norm2 = np.linalg.norm(emb2)
-           norm3 = np.linalg.norm(emb3)
-           
-           # Vektordifferenz und Zielvektor
-           diff_vector = emb2 - emb1
-           target_vector = emb3 + diff_vector
-           
-           # Kandidaten filtern
-           exclude_words = {word1.lower(), word2.lower(), word3.lower()}
-           candidates = [w for w in self.word_list if w.lower() not in exclude_words]
-           
-           # Similarities berechnen
-           similarities = []
-           for word in candidates:
-               try:
-                   word_embedding = self.get_embedding(word)
-                   sim = cosine_similarity([target_vector], [word_embedding])[0][0]
-                   similarities.append((word, sim))
-               except:
-                   continue
-           
-           # Top-N Results
-           results = sorted(similarities, key=lambda x: x[1], reverse=True)[:n]
-           
-           # Debug: Ähnlichkeit zwischen Eingabe- und Ausgabewort
-           if results:
-               result_emb = self.get_embedding(results[0][0])
-               output_similarity = cosine_similarity([emb3], [result_emb])[0][0]
-               
-               # Zusätzliche Debug-Info
-               debug_info = {
-                    'input_similarity': input_similarity,  # Ähnlichkeit word1:word2
-                    'output_similarity': output_similarity,  # Ähnlichkeit word3:result
-                    'vector_norm': np.linalg.norm(diff_vector),  # Größe des Differenzvektors
-                    'norm_word1': norm1,  # Länge Vektor word1
-                    'norm_word2': norm2,  # Länge Vektor word2
-                    'norm_word3': norm3,  # Länge Vektor word3
-                    'norm_result': np.linalg.norm(result_emb)  # Länge Vektor result
-                }
-               
-               if expected_result:
-                   expected_emb = self.get_embedding(expected_result)
-                   expected_similarity = cosine_similarity([target_vector], [expected_emb])[0][0]
-                   return results, expected_similarity, debug_info
-               return results, None, debug_info
-               
-           return results, None, None
-       
-       except Exception as e:
-           raise Exception(f"Fehler bei der Analogieberechnung: {str(e)}")
+  
 
     def find_similar_words(self, word: str, n: int = 10):
         """Findet ähnliche Wörter"""
