@@ -29,8 +29,7 @@ COPY . .
 # Clear any potential Python cache
 RUN find . -type d -name __pycache__ -exec rm -r {} + || true
 
-# Make the script executable
-RUN chmod +x run_services.sh
 
+RUN chmod +x scripts/run_services.sh
 EXPOSE 8080 8081
-CMD ["./run_services.sh"]
+CMD ["./scripts/run_services.sh"]

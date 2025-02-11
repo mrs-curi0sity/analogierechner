@@ -14,3 +14,9 @@ services:
       - .env.local
     environment:
       - ENVIRONMENT=local
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
