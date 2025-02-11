@@ -4,8 +4,11 @@ version = "0.1.0"
 description = "Analogierechner mit Embeddings"
 authors = ["Lena Aretz"]
 packages = [
-    { include = "src" }
+    { include = "src" },
+    { include = "src/core" }
 ]
+
+
 
 [tool.poetry.dependencies]
 python = "~3.11.11"
@@ -33,7 +36,6 @@ jupyterlab = "^4.1.0"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+
 [tool.pytest.ini_options]
-pythonpath = [
-    "."
-]
+pythonpath = ["src"]

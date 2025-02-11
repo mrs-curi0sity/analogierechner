@@ -23,7 +23,9 @@ cd analogierechner
 
 2. Dependencies installieren:
 ```bash
+poetry shell
 poetry install
+pip install -e .
 ```
 
 3. Modell-Dateien herunterladen:
@@ -37,10 +39,24 @@ data/
   └── glove.6B.100d.txt
 ```
 
-5. App starten:
+5. App starten 
 ```bash
-poetry run streamlit run streamlit_app.py
+poetry run streamlit run src/streamlit_app.py
 ```
+
+
+6. Tests ausführen
+# Run all tests
+python -m pytest
+
+# Run tests with output
+python -m pytest -v
+
+# Run specific test file
+python -m pytest test/test_embedding_handler.py -v
+
+# Run tests with print output
+python -m pytest -s
 
 ## Google Cloud Deployment
 
@@ -134,6 +150,9 @@ docker stats
 
 ## Logs anschauen
 docker-compose logs -f
+
+## nach änderungen des python codes
+docker-compose restart
 
 ## Container stoppen
 docker-compose down

@@ -142,18 +142,21 @@ class EmbeddingHandler:
         
         if word_lower in self._embedding_cache:
             return self._embedding_cache[word_lower]
-            
+                
         try:
             if self.model_type == 'glove':
                 if word_lower not in self.model:
                     raise ValueError(f"Word '{word}' not found in vocabulary")
                 embedding = self.model[word_lower]
-            else:
+            else:  # fasttext
+                # Prüfen ob das Wort in der Wortliste ist
+                if word_lower not in self.word_list:
+                    raise ValueError(f"Word '{word}' not found in vocabulary")
                 embedding = self.model.get_word_vector(word)
-                
+                    
             self._embedding_cache[word_lower] = embedding
             return embedding
-                
+                    
         except Exception as e:
             raise ValueError(f"Word '{word}' not found in vocabulary")
 
