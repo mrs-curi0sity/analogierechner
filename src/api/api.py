@@ -15,7 +15,7 @@ class AnalogyRequest(BaseModel):
 @app.post("/analogy")
 async def get_analogy(request: AnalogyRequest):
    handler = EmbeddingHandler(language=request.language)
-   results, _ = handler.find_analogy(request.word1, request.word2, request.word3, "")
+   results, _ = handler.find_analogy(request.word1, request.word2, request.word3, n=5)
    result = results[0][0] if results else None
    
    logger.log(
