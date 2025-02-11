@@ -3,7 +3,7 @@ from streamlit.components.v1 import html
 from core.embedding_handler import EmbeddingHandler
 import sys
 import os
-from src.core.logger import logger
+from core.logger import logger
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -22,7 +22,7 @@ def main():
     if 'embeddings_cache' not in st.session_state:
         st.session_state.embeddings_cache = {}
     
-    st.title("Analogierechner 2.0 - Wortrelationen")
+    st.title("Analogierechner - Wortrelationen")
     
     language = st.sidebar.selectbox(
         "Sprache / Language",
@@ -73,7 +73,7 @@ def main():
             try:
 
                 
-                results, _, debug_info = embedding_handler.find_analogy(word1, word2, word3, "")
+                results, _, debug_info = embedding_handler.find_analogy(word1, word2, word3, n=5)
                 best_result = results[0][0] if results else None
 
                 # Logging
