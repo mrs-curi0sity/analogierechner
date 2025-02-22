@@ -4,8 +4,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 import fasttext
 import streamlit as st
 from google.cloud import storage
-from core.logger import logger
+from src.core.logger import logger
 from typing import List, Tuple, Dict
+import time
 
 class EmbeddingHandler:
     """
@@ -42,80 +43,144 @@ class EmbeddingHandler:
         self._model = None
         self._word_list = None
         self._embedding_cache = {}
+        
+    def hybrid_similarity(target_vector: np.ndarray, candidate_vector: np.ndarray) -> float:
+        """
+        Berechnet eine hybride Ähnlichkeit aus Cosine Similarity und euklidischer Distanz.
+        """
+        # Cosine Similarity berechnen
+        cos_sim = float(cosine_similarity([target_vector], [candidate_vector])[0][0])
+        
+        # Euklidische Distanz berechnen und normalisieren
+        eucl_dist = np.linalg.norm(target_vector - candidate_vector)
+        max_dist = np.linalg.norm(target_vector) + np.linalg.norm(candidate_vector)
+        norm_dist = eucl_dist / max_dist
+        
+        # Gewichtete Kombination
+        similarity = 0.7 * cos_sim - 0.3 * norm_dist
+        
+        return similarity
     
     def find_analogy(self, word1: str, word2: str, word3: str, n: int = 5):
         try:
             logger.info(f"Input words: {word1}, {word2}, {word3}")
-            logger.info("Getting embeddings...")
             
-            # Sicherstellen dass n ein Integer ist
-            n = int(n)
+            # Wörter normalisieren
+            word1 = word1.replace(',', '').strip().lower()
+            word2 = word2.replace(',', '').strip().lower()
+            word3 = word3.replace(',', '').strip().lower()
             
-            # Kommas aus den Eingabewörtern entfernen
-            word1 = word1.replace(',', '').strip()
-            word2 = word2.replace(',', '').strip()
-            word3 = word3.replace(',', '').strip()
+            # Embeddings holen
+            emb1 = np.array(self.get_embedding(word1))
+            emb2 = np.array(self.get_embedding(word2))
+            emb3 = np.array(self.get_embedding(word3))
             
-            emb1 = self.get_embedding(word1)
-            emb2 = self.get_embedding(word2)
-            emb3 = self.get_embedding(word3)
-            
-            logger.info("Embedding shapes:")
-            logger.info(f"emb1: {emb1.shape}")
-            logger.info(f"emb2: {emb2.shape}")
-            logger.info(f"emb3: {emb3.shape}")
-            
-            # Arrays explizit als numpy arrays casten
-            emb1 = np.array(emb1)
-            emb2 = np.array(emb2)
-            emb3 = np.array(emb3)
-            
+            # Differenzvektor berechnen
             diff_vector = emb2 - emb1
             target_vector = emb3 + diff_vector
             
             logger.info("Starting analogy search...")
             similarities = []
-            exclude_words = {word1.lower(), word2.lower(), word3.lower()}
+            exclude_words = {word1, word2, word3}
             
+            # Wortliste durchgehen
             for word in self.word_list:
-                if word.lower() not in exclude_words:
+                word = word.lower()
+                if word not in exclude_words:
                     try:
                         word_embedding = np.array(self.get_embedding(word))
+                        
+                        # Cosine Similarity direkt nutzen
                         sim = float(cosine_similarity([target_vector], [word_embedding])[0][0])
-                        similarities.append((word, sim))
+                        
+                        # Differenzvektor-Check optional machen
+                        new_diff = word_embedding - emb3
+                        diff_similarity = float(cosine_similarity([diff_vector], [new_diff])[0][0])
+                        
+                        # Weniger strenge Filterung
+                        if diff_similarity > 0.0:  # Akzeptiere alle positiven Ähnlichkeiten
+                            similarities.append((word, sim, diff_similarity))
+                            
                     except Exception as e:
                         logger.debug(f"Skipping word {word}: {str(e)}")
                         continue
             
-            # Explizit nach dem zweiten Element (similarity) sortieren
-            results = sorted(similarities, key=lambda x: float(x[1]), reverse=True)
+            # Nach Gesamtähnlichkeit sortieren
+            results = sorted(similarities, key=lambda x: x[1], reverse=True)
             
-            # Sicherstellen dass n nicht größer ist als die Anzahl der Ergebnisse
+            # Top-N Ergebnisse
             n = min(n, len(results))
-            results = results[:n]
+            final_results = [(word, sim) for word, sim, _ in results[:n]]
             
-            logger.info(f"Found {len(results)} results")
-            
-            if results:
-                best_result = results[0][0]
+            if final_results:
+                best_result = final_results[0][0]
                 debug_info = {
                     'input_similarity': float(cosine_similarity([emb1], [emb2])[0][0]),
                     'output_similarity': float(cosine_similarity([emb3], [self.get_embedding(best_result)])[0][0]),
-                    'vector_norm': float(np.linalg.norm(diff_vector)),
-                    'norm_word1': float(np.linalg.norm(emb1)),
-                    'norm_word2': float(np.linalg.norm(emb2)),
-                    'norm_word3': float(np.linalg.norm(emb3)),
-                    'norm_result': float(np.linalg.norm(self.get_embedding(best_result)))
+                    'vector_norm': float(np.linalg.norm(diff_vector))
                 }
             else:
                 debug_info = None
             
-            return results, None, debug_info
+            return final_results, None, debug_info
             
         except Exception as e:
             logger.error(f"Error in analogy calculation: {str(e)}")
             raise
 
+    
+    def find_analogy_vectorized(self, word1: str, word2: str, word3: str, n: int = 5):
+        """
+        Vektorisierte Version der Analogieberechnung.
+        """
+        try:
+            start_time = time.time()
+            logger.info(f"Input words: {word1}, {word2}, {word3}")
+            
+            # Wörter normalisieren
+            word1 = word1.replace(',', '').strip().lower()
+            word2 = word2.replace(',', '').strip().lower()
+            word3 = word3.replace(',', '').strip().lower()
+            
+            # Cache erstellen falls noch nicht vorhanden
+            if not hasattr(self, '_all_embeddings'):
+                logger.info("Creating embeddings cache...")
+                self._all_embeddings = np.array([self.get_embedding(w) for w in self.word_list])
+                logger.info("Cache creation completed")
+            
+            # Embeddings für Eingabewörter
+            emb1 = np.array(self.get_embedding(word1))
+            emb2 = np.array(self.get_embedding(word2))
+            emb3 = np.array(self.get_embedding(word3))
+            
+            # Vektorisierte Berechnung
+            diff_vector = emb2 - emb1
+            target_vector = emb3 + diff_vector
+            
+            # Alle Similarities auf einmal berechnen
+            similarities = cosine_similarity([target_vector], self._all_embeddings)[0]
+            
+            # Ausschlusswörter
+            exclude_indices = [i for i, w in enumerate(self.word_list) 
+                             if w.lower() in {word1, word2, word3}]
+            similarities[exclude_indices] = -1
+            
+            # Top-N finden
+            top_indices = np.argsort(similarities)[-n:][::-1]
+            results = [(self.word_list[i], float(similarities[i])) 
+                      for i in top_indices]
+            
+            computation_time = time.time() - start_time
+            
+            return results, None, {
+                'input_similarity': float(cosine_similarity([emb1], [emb2])[0][0]),
+                'computation_time': computation_time
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in vectorized analogy calculation: {str(e)}")
+            raise
+    
     def find_similar_words(self, word: str, n: int = 10) -> List[Tuple[str, float]]:
         """Findet ähnliche Wörter basierend auf Cosine-Similarity"""
         try:
